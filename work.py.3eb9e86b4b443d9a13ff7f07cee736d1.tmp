@@ -1,0 +1,937 @@
+from material import Material
+from utils import (sci_round, mmHg_2_kPa, kPa_2_mmHg, one_D_matching, draw, temp_to_K, get_rou_by_t, get_miu_by_t, get_sita_by_t, get_C_20, D_round, get_c_p_by_t, get_latent_heat_t, get_p_by_temp, get_temp_by_p, kgf_to_mmHg, ge_y_by_x, get_value_of_key)
+import numpy as np
+import matplotlib.pyplot as plt
+import math
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+from mpl_toolkits.axes_grid1.inset_locator import mark_inset
+from alive_progress import alive_bar
+from tray_paramater import tray_paramater
+
+default_antoine = {
+    # lgP=A-B/(T+C) T/℃ P/mmHg
+    # alcohol
+    'solute': [7.87863, 1473.11, 230],
+    # water
+    'solvent': [7.96681, 1668.21, 228],
+    'log': 'log10'
+}
+
+log_dict = {
+    'log10': np.log10,
+    'ln': np.log,
+}
+
+back_dict = {
+    'log10': 10,
+    'ln': np.e,
+}
+
+alcohol_rou_t = {
+    't': [
+        -80, -60, -40, -20, 0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200,
+        220, 240
+    ],
+    'rou': [
+        899.4, 881.8, 863.6, 844.8, 825.2, 804.8, 783.5, 761.1, 737.4, 712,
+        684.7, 654.9, 621.6, 583.4, 537.1, 474.2, 310
+    ]
+}
+
+alchohol_miu_t = {
+    't': [-80, -60, -40, -20, 0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200],
+    'miu': [
+        5.55, 2.98, 1.78, 1.16, 0.799, 0.580, 0.439, 0.344, 0.277, 0.228,
+        0.196, 0.163, 0.107, 0.083, 0.062
+    ]
+}
+
+alchohol_sita_t = {
+    't': [
+        -25.0, -20.0, -15.0, -10.0, -5.0, 0.0, 5.0, 10.0, 15.0, 20.0, 25.0,
+        30.0, 35.0, 40.0, 45.0, 50.0, 55.0, 60.0, 65.0, 70.0, 75.0, 80.0, 85.0,
+        90.0, 95.0, 100.0, 105.0, 110.0, 115.0, 120.0, 125.0, 130.0, 135.0,
+        140.0, 145.0, 150.0
+    ],
+    'sita': [
+        26.520, 26.054, 25.596, 25.146, 24.704, 24.268, 23.837, 23.411, 22.987,
+        22.567, 22.148, 21.730, 21.312, 20.893, 20.474, 20.052, 19.627, 19.200,
+        18.768, 18.332, 17.891, 17.445, 16.993, 16.535, 16.069, 15.597, 15.117,
+        14.630, 14.135, 13.631, 13.119, 12.599, 12.070, 11.533, 10.987, 10.432
+    ]
+}
+
+alcohol_c_p = {
+    't':
+    [-10, 0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150],
+    'c_p': [
+        2.3588, 2.4011, 2.4496, 2.5047, 2.5662, 2.6340, 2.7080, 2.7880, 2.8739,
+        2.9658, 3.0640, 3.1689, 3.2813, 3.4024, 3.5339, 3.6783, 3.8393
+    ]
+}
+
+alcohol_latent_heat = {
+    't': [
+        0, 10, 20, 25, 30, 40, 50, 60, 64.7, 70, 80, 90, 100, 110, 120, 130,
+        140, 150, 160, 170, 180, 190, 200
+    ],
+    'latent_heat': [
+        1201.854, 1190.2172500000001, 1177.0115, 1169.82025,
+        1162.3675000000003, 1146.2852500000001, 1128.8955, 1110.3290000000002,
+        1101.1765000000003, 1093.07, 1069.40425, 1047.17675,
+        1023.6417499999999, 998.53775, 971.7340000000002, 943.09975,
+        912.2427500000001, 878.77075, 842.0300000000001, 801.4975,
+        755.9965000000001, 704.481, 644.859
+    ]
+}
+
+water_rou_t = {
+    't': [
+        5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0, 10.5, 11.0,
+        11.5, 12.0, 12.5, 13.0, 13.5, 14.0, 14.5, 15.0, 15.5, 16.0, 16.5, 17.0,
+        17.5, 18.0, 18.5, 19.0, 19.5, 20.0, 20.5, 21.0, 21.5, 22.0, 22.5, 23.0,
+        23.5, 24.0, 24.5, 25.0, 25.5, 26.0, 26.5, 27.0, 27.5, 28.0, 28.5, 29.0,
+        29.5, 30.0, 30.5, 31.0, 31.5, 32.0, 32.5, 33.0, 33.5, 34.0, 34.5
+    ],
+    'rou': [
+        999.992, 999.982, 999.968, 999.951, 999.930, 999.905, 999.876, 999.844,
+        999.809, 999.770, 999.728, 999.682, 999.633, 999.580, 999.525, 999.466,
+        999.404, 999.339, 999.271, 999.200, 999.126, 999.050, 998.970, 998.888,
+        998.802, 998.714, 998.623, 998.530, 998.433, 998.334, 998.232, 998.128,
+        998.021, 997.911, 997.799, 997.685, 998.567, 997.448, 997.327, 997.201,
+        997.074, 996.944, 996.813, 996.679, 996.542, 996.403, 996.262, 996.119,
+        995.974, 995.826, 995.676, 995.524, 995.369, 995.213, 995.054, 994.894,
+        994.731, 994.566, 994.399, 994.230
+    ]
+}
+
+water_miu_t = {
+    't': [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150],
+    'miu': [
+        1.7921, 1.3077, 1.0050, 0.8007, 0.656, 0.5494, 0.4688, 0.4061, 0.3565,
+        0.3165, 0.2838, 0.2589, 0.2373, 0.2177, 0.2010, 0.1863
+    ]
+}
+
+water_sita_t = {
+    't': [
+        0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0, 55.0,
+        60.0, 65.0, 70.0, 75.0, 80.0, 85.0, 90.0, 95.0, 100.0, 105.0, 110.0,
+        115.0, 120.0, 125.0, 130.0, 135.0, 140.0, 145.0, 150.0
+    ],
+    'sita': [
+        75.645, 74.942, 74.221, 73.486, 72.736, 71.972, 71.194, 70.402, 69.596,
+        68.777, 67.944, 67.098, 66.238, 65.366, 64.481, 63.583, 62.673, 61.750,
+        60.816, 59.870, 58.912, 57.943, 56.962, 55.970, 54.968, 53.955, 52.932,
+        51.899, 50.856, 49.803, 48.741
+    ]
+}
+
+water_c_p = {
+    't': [0, 20, 50, 100, 150],
+    'c_p': [4.215, 4.181, 4.180, 4.215, 4.310]
+}
+
+steam_latent_heat = {
+    't': [
+        0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85,
+        90, 95, 100, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150, 160, 170
+    ],
+    'latent_heat': [
+        2491.3, 2480, 2468.6, 2457.8, 2446.3, 2433.9, 2426.7, 2412.6, 2401.1,
+        2389.5, 2378.1, 2366.5, 2355.1, 2343.4, 2331.2, 2315.7, 2307.3, 2295.3,
+        2283.1, 2271, 2258.4, 2245.5, 2232.4, 2221, 2205.2, 2193.1, 2177.6,
+        2166, 2148.7, 2137.5, 2118.5, 2087.1, 2054
+    ]
+}
+
+standard_D = get_value_of_key(tray_paramater, 'D')
+
+
+class Work:
+
+    def __init__(
+            self,
+            material: Material,
+            t_cooled: float = 40,
+            delta_t_water: float = 5,
+            t_water_initial: float = None,
+            antoine: dict = default_antoine,
+            p_atm=101.3,  # kPa
+            p_steam=5,  # kgf/cm^2
+            f=1.1,
+            q=1,
+            fee_C_F=2000,
+            fee_steam=300,  # yuan/t
+            fee_cool_water=0.6,  # yuan/t
+            k_D=13290,
+            log_dict=log_dict,
+            back_dict=back_dict,
+            solute_rou_t=alcohol_rou_t,
+            solvent_rou_t=water_rou_t,
+            solute_miu_t=alchohol_miu_t,
+            solvent_miu_t=water_miu_t,
+            solute_sita_t=alchohol_sita_t,
+            solvent_sita_t=water_sita_t,
+            solute_c_p_t=alcohol_c_p,
+            solvent_c_p_t=water_c_p,
+            steam_latent_heat=steam_latent_heat,
+            soluent_latent_heat=alcohol_latent_heat,
+            solvent_latent_heat=steam_latent_heat):
+        self.material = material
+        self.antoine = antoine
+        self.log = log_dict[antoine['log']]
+        self.back = back_dict[antoine['log']]
+        self.p_atm = p_atm
+        self.p_steam = p_steam
+        self.t_steam = sci_round(
+            get_temp_by_p(antoine['solvent'],
+                          kgf_to_mmHg(p_steam),
+                          log=self.log))
+        self.f = f
+        self.q = q
+        self.t_cooled = t_cooled
+        self.fee_C_F = fee_C_F
+        self.fee_cool_water = fee_cool_water
+        self.fee_steam = fee_steam
+        self.k_D = k_D
+        self.t_water_initial = t_water_initial if t_water_initial else material.initial_temp
+        self.delta_t_water = delta_t_water
+        self.solute_rou_t = solute_rou_t
+        self.solvent_rou_t = solvent_rou_t
+        self.solute_miu_t = solute_miu_t
+        self.solvent_miu_t = solvent_miu_t
+        self.solute_sita_t = solute_sita_t
+        self.solvent_sita_t = solvent_sita_t
+        self.solute_c_p_t = solute_c_p_t
+        self.solvent_c_p_t = solvent_c_p_t
+        self.steam_latent_heat = steam_latent_heat
+        self.solute_latent_heat = soluent_latent_heat
+        self.solvent_latent_heat = solvent_latent_heat
+
+    def get_thero_plates(self, R_multiple=1.2):
+        material = self.material
+        R = material.R_min * R_multiple
+        k = sci_round(R / (R + 1), None)
+        c = sci_round(material.x_D / (R + 1), None)
+        y_inter_q = sci_round(k * material.x_F + c, None)
+        k_h = sci_round(
+            (y_inter_q - material.x_w) / (material.x_F - material.x_w), None)
+        c_h = sci_round(material.x_w - k_h * material.x_w, 4)
+        x = []
+        y = []
+        y_current = material.x_D
+        X, Y = one_D_matching(np.array(material.phase_equilibrium['x']), np.array(material.phase_equilibrium['y']))
+
+        def get_x_current(y_current):
+            # print('get', y_current)
+            return sci_round(
+                ge_y_by_x(
+                    Y,
+                    X,
+                    y_current),
+                None)
+
+        x_current = get_x_current(y_current)
+        x.append(x_current)
+        y.append(y_current)
+        N_r = 1
+        # print(x_current, y_current)
+        while x_current >= material.x_w:
+            if x_current >= material.x_F:
+                y_current = sci_round(k * x_current + c, None)
+                x_current = get_x_current(y_current)
+                N_r += 1
+            else:
+                y_current = sci_round(k_h * x_current + c_h, None)
+                x_current = get_x_current(y_current)
+            x.append(x_current)
+            y.append(y_current)
+            if y[-1] == y[-2]:
+                print('drop-deed halt R_multiple=', R_multiple)
+                break
+        return {
+            'x': x,
+            'y': y,
+            'number': len(x),
+            'rec_operating_line': f"y={k}x+{c}",
+            'stripping_operating_line': f"y={k_h}x{'+' if c_h > 0 else ''}{c_h}",
+            'R': R,
+            'R_multiple': R_multiple,
+            'N_r': N_r,
+            'N_s': len(x) - N_r
+        }
+
+    def draw_operating_line(self,
+                            R_multiple,
+                            size=(12, 6),
+                            save=False,
+                            filename=None):
+        material = self.material
+        R = material.R_min * R_multiple
+        k_r = sci_round(R / (R + 1), 4)
+        c_r = sci_round(material.x_D / (R + 1), 4)
+        y_inter = sci_round(k_r * material.x_F + c_r, 4)
+        phase_equilibrium = material.phase_equilibrium
+        x = np.array(phase_equilibrium['x'])
+        y = np.array(phase_equilibrium['y'])
+        x_new, y_smooth = one_D_matching(x, y)
+        plt.figure(figsize=size)
+        plt.title(f"{R_multiple}R_min operating_line")
+        plt.xlabel('x')
+        plt.ylabel('y')
+        plt.plot(x, y, 'o', label="相平衡曲线")
+        plt.plot(x_new, y_smooth, linestyle='-', label="相平衡曲线拟合")
+        plt.plot([0, 1], [0, 1], linestyle='-')
+        plt.plot([material.x_F, material.x_F], [material.x_F, 1],
+                 'o',
+                 linestyle='-',
+                 label="q线")
+        plt.plot(material.x_F, y_inter, 'o')
+        plt.plot([material.x_D, material.x_F], [material.x_D, y_inter],
+                 'o',
+                 linestyle='-')
+        plt.plot([material.x_w, material.x_F], [material.x_w, y_inter],
+                 'o',
+                 linestyle='-')
+        plt.text(material.x_F + 0.01, material.x_F - 0.01, 'f(x_F, x_F)')
+        plt.text(material.x_F, 1, 'q=1')
+        plt.text(material.x_F + 0.01, y_inter - 0.01,
+                 f'e({material.x_F}, {y_inter})')
+        plt.text(material.x_D + 0.01, material.x_D - 0.01, 'a(x_D, x_D)')
+        plt.text(material.x_w + 0.01, material.x_w - 0.01, 'b(x_w, x_w)')
+        plt.legend()
+        if save:
+            assert filename, 'filename is None'
+            plt.savefig(filename)
+
+    def draw_thero_plates(self,
+                          R_multiple,
+                          size=(12, 6),
+                          save=False,
+                          filename=None):
+
+        def draw_func(fig, ax):
+            material = self.material
+            thero_plates = self.get_thero_plates(R_multiple)
+            x_plates = thero_plates['x']
+            y_plates = thero_plates['y']
+            R = sci_round(material.R_min * R_multiple, 4)
+            k_r = sci_round(R / (R + 1), 4)
+            c_r = sci_round(material.x_D / (R + 1), 4)
+            y_inter = sci_round(k_r * material.x_F + c_r, 4)
+            phase_equilibrium = material.phase_equilibrium
+            x = np.array(phase_equilibrium['x'])
+            y = np.array(phase_equilibrium['y'])
+            x_new, y_smooth = one_D_matching(x, y)
+            plt.xlabel('x')
+            plt.ylabel('y')
+
+            for index in range(0, len(x_plates)):
+                if index == 0:
+                    plt.plot([x_plates[index], material.x_D],
+                             [y_plates[index], material.x_D],
+                             linestyle='-',
+                             label="plate",
+                             color='k')
+                    plt.plot([x_plates[index], x_plates[index]],
+                             [y_plates[index], y_plates[index + 1]],
+                             linestyle='-',
+                             label="plate",
+                             color='k')
+                elif index == len(x_plates) - 1:
+                    plt.plot([x_plates[index], x_plates[index - 1]],
+                             [y_plates[index], y_plates[index]],
+                             linestyle='-',
+                             label="plate",
+                             color='k')
+                    plt.plot([x_plates[index], material.x_w],
+                             [y_plates[index], material.x_w],
+                             linestyle='-',
+                             label="plate",
+                             color='k')
+                else:
+                    plt.plot([x_plates[index], x_plates[index - 1]],
+                             [y_plates[index], y_plates[index]],
+                             linestyle='-',
+                             label="plate",
+                             color='k')
+                    plt.plot([x_plates[index], x_plates[index]],
+                             [y_plates[index], y_plates[index + 1]],
+                             linestyle='-',
+                             label="plate",
+                             color='k')
+                plt.text(x_plates[index] - 0.02, y_plates[index] + 0.02,
+                         f"{index + 1}")
+
+            plt.plot(x, y, 'o')
+            plt.plot(x_new, y_smooth, linestyle='-', label="相平衡曲线拟合")
+            plt.plot([0, 1], [0, 1], linestyle='-')
+            plt.plot([material.x_F, material.x_F], [material.x_F, 1],
+                     'o',
+                     linestyle='-',
+                     label="q线")
+            plt.plot(material.x_F, y_inter, 'o')
+            plt.plot([material.x_D, material.x_F], [material.x_D, y_inter],
+                     'o',
+                     linestyle='-')
+            plt.plot([material.x_w, material.x_F], [material.x_w, y_inter],
+                     'o',
+                     linestyle='-')
+            plt.text(material.x_F + 0.01, material.x_F - 0.01, 'f(x_F, x_F)')
+            plt.text(material.x_F, 1, 'q=1')
+            plt.text(material.x_F + 0.01, y_inter - 0.01,
+                     f'e({material.x_F}, {y_inter})')
+            plt.text(material.x_D + 0.01, material.x_D - 0.01, 'a(x_D, x_D)')
+            plt.text(material.x_w + 0.01, material.x_w - 0.01, 'b(x_w, x_w)')
+            axins = inset_axes(ax,
+                               width="40%",
+                               height="30%",
+                               loc='lower left',
+                               bbox_to_anchor=(0.5, 0.1, 1, 1),
+                               bbox_transform=ax.transAxes)
+            axins.plot(x, y, 'o')
+            axins.plot(x_new, y_smooth, linestyle='-')
+            axins.plot([0, 1], [0, 1], linestyle='-')
+            axins.plot([material.x_F, material.x_F], [material.x_F, 1],
+                       'o',
+                       linestyle='-',
+                       label="q线")
+            axins.plot(material.x_F, y_inter, 'o')
+            axins.plot([material.x_D, material.x_F], [material.x_D, y_inter],
+                       'o',
+                       linestyle='-')
+            axins.plot([material.x_w, material.x_F], [material.x_w, y_inter],
+                       'o',
+                       linestyle='-')
+            for index in range(0, len(x_plates)):
+                if index == 0:
+                    axins.plot([x_plates[index], material.x_D],
+                               [y_plates[index], material.x_D],
+                               linestyle='-',
+                               label="plate",
+                               color='k')
+                    axins.plot([x_plates[index], x_plates[index]],
+                               [y_plates[index], y_plates[index + 1]],
+                               linestyle='-',
+                               label="plate",
+                               color='k')
+                elif index == len(x_plates) - 1:
+                    axins.plot([x_plates[index], x_plates[index - 1]],
+                               [y_plates[index], y_plates[index]],
+                               linestyle='-',
+                               label="plate",
+                               color='k')
+                else:
+                    axins.plot([x_plates[index], x_plates[index - 1]],
+                               [y_plates[index], y_plates[index]],
+                               linestyle='-',
+                               label="plate",
+                               color='k')
+                    axins.plot([x_plates[index], x_plates[index]],
+                               [y_plates[index], y_plates[index + 1]],
+                               linestyle='-',
+                               label="plate",
+                               color='k')
+                if len(x_plates) - index <= 3:
+                    axins.text(x_plates[index] - 0.00001,
+                               y_plates[index] + 0.00001, f"{index + 1}")
+            zone_left = 0
+            zone_right = 1
+
+            x_ratio = 0.00000001
+            y_ratio = 1000000
+
+            xlim0 = x[zone_left] - (x[zone_right] - x[zone_left]) * x_ratio
+            xlim1 = x[zone_right] + (x[zone_right] - x[zone_left]) * x_ratio
+
+            y_data = np.hstack(y[zone_left:zone_right])
+            ylim_bottom = np.min(y_data) - (np.max(y_data) -
+                                            np.min(y_data)) * y_ratio
+            ylim_top = np.max(y_data) + (np.max(y_data) -
+                                         np.min(y_data)) * y_ratio
+
+            axins.set_xlim(xlim0, xlim1)
+            axins.set_ylim(ylim_bottom, ylim_top)
+            mark_inset(ax, axins, loc1=2, loc2=4, fc="none", ec='k', lw=1)
+
+        draw(draw_func=draw_func,
+             title=f"{R_multiple}R_min",
+             save=save,
+             filename=filename,
+             size=size,
+             subplots=True)
+
+    def get_t_top(self, p_solute):
+        p_solute = kPa_2_mmHg(p_solute)
+        antoine_solute = self.antoine['solute']
+        log = self.log
+        t_top = sci_round(get_temp_by_p(antoine_solute, p_solute, log=log), 4)
+        return sci_round(t_top)  # ℃
+
+    def get_t_bottom(self, p_solvent):
+        p_solvent = kPa_2_mmHg(p_solvent)
+        antoine = self.antoine['solvent']
+        log = self.log
+        t_bottom = sci_round(get_temp_by_p(antoine, p_solvent, log=log), 4)
+        return sci_round(t_bottom)
+
+    def get_p_top_solvent(self, t):
+        antoine_solvent = self.antoine['solvent']
+        back = self.back
+        P_solvent = get_p_by_temp(antoine_solvent, t, back=back)
+        return sci_round(mmHg_2_kPa(P_solvent))  # kPa
+
+    def get_p_top_solute(self, R_multiple):
+        material = self.material
+        thero_plates = self.get_thero_plates(R_multiple)
+        x_plates = thero_plates['x']
+        x_1 = x_plates[0]
+        P_solute = self.p_atm * material.x_D / x_1
+        return sci_round(P_solute)  # kPa
+
+    def get_p_bottom_solvent(self, R_multiple):
+        thero_plates = self.get_thero_plates(R_multiple)
+        y_plates = thero_plates['y']
+        x_plates = thero_plates['x']
+        y = 1 - y_plates[-1]
+        x = 1 - x_plates[-1]
+        P_solvent = self.p_atm * y / x
+        return sci_round(P_solvent)  # kPa
+
+    def get_p_bottom_solute(self, t):
+        antoine_solute = self.antoine['solute']
+        back = self.back
+        p_solute = get_p_by_temp(antoine_solute, t, back=back)
+        return sci_round(mmHg_2_kPa(p_solute))
+
+    def get_alpha(self, p_solute, p_solvent):
+        return sci_round(p_solute / p_solvent, 4)
+
+    def get_relative_alpha(self, alpha_top, alpha_bottom):
+        return sci_round(np.sqrt(alpha_top * alpha_bottom), 2)
+
+    def get_average_miu(self, miu_solute, miu_solvent):
+        material = self.material
+        x_F = material.x_F
+        return sci_round(
+            10**(x_F * np.log10(miu_solute) +
+                 (1 - x_F) * np.log10(miu_solvent)), 4)
+
+    def get_E_T(self, alpha, miu):
+        return sci_round(0.49 * self.f * (alpha * miu)**(-0.245))
+
+    def get_real_plates(self, R_multiple):
+        p_top_solute = self.get_p_top_solute(R_multiple)
+        t_top = self.get_t_top(p_top_solute)
+        p_top_solvent = self.get_p_top_solvent(t_top)
+        alpha_top = self.get_alpha(p_solute=p_top_solute,
+                                   p_solvent=p_top_solvent)
+        p_bottom_solvent = self.get_p_bottom_solvent(R_multiple)
+        t_bottom = self.get_t_bottom(p_bottom_solvent)
+        p_bottom_solute = self.get_p_bottom_solute(t_bottom)
+        alpha_bottom = self.get_alpha(p_bottom_solute, p_bottom_solvent)
+        alpha_relate = self.get_relative_alpha(alpha_top, alpha_bottom)
+        miu_solute = get_miu_by_t(self.solute_miu_t, self.material.t_b)
+        miu_solvent = get_miu_by_t(self.solvent_miu_t, self.material.t_b)
+        miu_relate = self.get_average_miu(miu_solute, miu_solvent)
+        E_T = self.get_E_T(alpha_relate, miu_relate)
+        thero_plates = self.get_thero_plates(R_multiple)
+        N = thero_plates['number']
+        N_r = thero_plates['N_r']
+        return {
+            'N_real': math.ceil(N / E_T),
+            'N_real_r': math.ceil(N_r / E_T),
+            'E_T': E_T,
+            'alpha_top': alpha_top,
+            'alpha_bottom': alpha_bottom,
+            'alpha_relate': alpha_relate,
+            'miu_relate': miu_relate,
+            't_top': t_top,
+            't_bottom': t_bottom,
+            'p_top_solute': p_top_solute,
+            'p_top_solvent': p_top_solvent,
+            'p_bottom_solute': p_bottom_solute,
+            'p_bottom_solvent': p_bottom_solvent,
+        }
+
+    def get_M_v(self, x):
+        material = self.material
+        M_solvent = material.M_solvent
+        M_solute = material.M_solute
+        return sci_round(x * M_solute + (1 - x) * M_solvent, 4)
+
+    def get_gama_v(self, p, M_v, t, R=8.314):
+        t = temp_to_K(t)
+        return sci_round(p * M_v / (R * t), 4)
+
+    def get_gama_L(self, R_multiple):
+        material = self.material
+        real_plates = self.get_real_plates(R_multiple)
+        t_top = real_plates['t_top']
+        rou_solute = get_rou_by_t(self.solute_rou_t, t_top)
+        rou_solvent = get_rou_by_t(self.solvent_rou_t, t_top)
+        w_F = material.w_F
+        return sci_round(1 / (w_F / rou_solute + (1 - w_F) / rou_solvent), 4)
+
+    def get_V(self, R_multiple):
+        material = self.material
+        R = material.R_min * R_multiple
+        D = material.D
+        return sci_round((R + 1) * D, 4)
+
+    def get_V_s(self, M_v, V, gama_v):
+        return sci_round(V * M_v / 3600 / gama_v)
+
+    def get_M_L(self, x):
+        material = self.material
+        M_solvent = material.M_solvent
+        M_solute = material.M_solute
+        return sci_round(x * M_solute + (1 - x) * M_solvent, 4)
+
+    def get_L_s(self, V, M_L, gama_L):
+        material = self.material
+        D = material.D
+        L = V - D
+        return sci_round(L * M_L / 3600 / gama_L)
+
+    def get_L_v(self, L, V, gama_L, gama_v):
+        return L / V * (gama_L / gama_v)**0.5
+
+    def get_tower_diameter(self, R_multiple, u_multiple, H_T=0.35, h_L=0.05):
+        thero_plates = self.get_thero_plates(R_multiple)
+        real_plates = self.get_real_plates(R_multiple)
+        t_top = real_plates['t_top']
+        N = real_plates['N_real']
+        # material = self.material
+        x_1 = thero_plates['x'][0]
+        y_1 = thero_plates['y'][0]
+        M_v = self.get_M_v(y_1)
+        gama_v = self.get_gama_v(self.p_atm, M_v, t_top)
+        # rou_solute = get_rou_by_t(self.solute_rou_t, t_top)
+        # rou_solvent = get_rou_by_t(self.solvent_rou_t, t_top)
+        gama_L = self.get_gama_L(R_multiple)
+        V = self.get_V(R_multiple)
+        V_s = self.get_V_s(M_v, V, gama_v)
+        M_L = self.get_M_L(x_1)
+        L_s = self.get_L_s(V, M_L, gama_L)
+        L_v = self.get_L_v(L_s, V_s, gama_L, gama_v)
+        H = H_T - h_L
+        C_20 = sci_round(get_C_20(H, L_v), 4)
+        sita_solute = get_sita_by_t(self.solute_sita_t, t_top)
+        sita_solvent = get_sita_by_t(self.solvent_sita_t, t_top)
+        sita = sita_solute * x_1 + sita_solvent * (1 - x_1)
+        C_sita = sci_round(C_20 / (20 / sita)**0.5, 4)
+        u_max = sci_round(C_sita * np.sqrt((gama_L - gama_v) / gama_v), 4)
+        u = sci_round(u_max * u_multiple)
+        D = sci_round(np.sqrt(V_s / (0.785 * u)))
+        D_rounded = D_round(D, standard=standard_D)
+        k_D = self.k_D
+        C_D = sci_round(k_D * D_rounded**1.2 * N)
+        return {
+            'D': D,
+            'D_rounded': D_rounded,
+            'C_D': C_D,
+            'N': N,
+            'sita': sita,
+            'M_L': M_L,
+            'M_v': M_v,
+            'L_s': L_s,
+            'L_v': L_v,
+            'V': V,
+            'V_s': V_s,
+            'gama_v': gama_v,
+            'gama_L': gama_L,
+            'u_max': u_max
+        }
+
+    def get_preheat(self, K_heat=300, loss_Q=1.05):
+        material = self.material
+        # p_steam = kgf_to_kPa(self.p_steam)
+        # solvent_antoine = self.antoine['solvent']
+        # log = self.log
+        T_steam = self.t_steam
+        F_kg = material.F_kg
+        m_c = sci_round(F_kg / 3600)
+        t_b = material.t_b
+        initial_temp = material.initial_temp
+        T_aveage = sci_round((t_b + initial_temp) / 2)
+        c_p_solute = sci_round(get_c_p_by_t(self.solute_c_p_t, T_aveage), 4)
+        c_p_solvent = sci_round(get_c_p_by_t(self.solvent_c_p_t, T_aveage), 4)
+        c_p = sci_round(
+            material.w_F * c_p_solute + (1 - material.w_F) * c_p_solvent, 4)
+        delta_t_1 = sci_round(T_steam - t_b)
+        delta_t_2 = sci_round(T_steam - initial_temp)
+        r = sci_round(get_latent_heat_t(self.steam_latent_heat, T_steam), 4)
+        Q = sci_round(m_c * c_p * (t_b - initial_temp))
+        m_h = sci_round(loss_Q * Q / r)
+        delta_t_m = sci_round(
+            (delta_t_2 - delta_t_1) / np.log(delta_t_2 / delta_t_1))
+        A = sci_round(loss_Q * Q / (K_heat * delta_t_m) * 1000)
+        # A = loss_Q * Q / (K_heat * delta_t_m) * 1000
+        C_F = sci_round(self.fee_C_F * A)
+        C_S = sci_round(self.fee_steam * m_h / 1000 * 3600 * material.time)
+        return {
+            'A': A,
+            'm_h': m_h,
+            'C_F': C_F,
+            'C_S': C_S,
+            'Q': Q,
+            't_b': t_b,
+            'r': r,
+            'c_p_solute': c_p_solute,
+            'c_p_solvent': c_p_solvent,
+            'c_p': c_p,
+            'm_c': m_c,
+            'initial_temp': initial_temp,
+            'delta_t_1': delta_t_1,
+            'delta_t_2': delta_t_2,
+            'delta_t_m': delta_t_m,
+            'T_steam': T_steam,
+            'K_heat': K_heat
+        }
+
+    def get_cooler(self, R_multiple, K_cool=300):
+        t_water_initial = self.t_water_initial
+        delta_t_water = self.delta_t_water
+        t_water_cooled = t_water_initial + delta_t_water
+        t_water_avarage = sci_round((t_water_initial + t_water_cooled) / 2)
+        c_p_c = sci_round(get_c_p_by_t(self.solvent_c_p_t, t_water_avarage))
+        material = self.material
+        real_plates = self.get_real_plates(R_multiple)
+        t_in = real_plates['t_top']
+        t_out = self.t_cooled
+        t_p = sci_round((t_in + t_out) / 2)
+        c_p_solute = sci_round(get_c_p_by_t(self.solute_c_p_t, t_p))
+        c_p_solvent = sci_round(get_c_p_by_t(self.solvent_c_p_t, t_p))
+        c_p_h = sci_round(material.x_o * c_p_solute +
+                          (1 - material.x_o) * c_p_solvent)
+        m_h = sci_round(material.F_kg / 3600)
+        delta_t_1 = sci_round(t_in - t_water_cooled)
+        delta_t_2 = sci_round(t_out - t_water_initial)
+        Q = sci_round(m_h * c_p_h * (t_in - t_out))
+        m_c = sci_round(Q / (c_p_c * delta_t_water))
+        delta_t_m = sci_round(
+            (delta_t_2 - delta_t_1) / np.log(delta_t_2 / delta_t_1))
+        A = sci_round(Q / (K_cool * delta_t_m) * 1000)
+        C_F = sci_round(self.fee_C_F * A)
+        C_w = sci_round(self.fee_cool_water * m_c / 1000 * 3600 *
+                        material.time)
+        return {
+            'A': A,
+            'm_c': m_c,
+            'C_F': C_F,
+            'C_w': C_w,
+            'Q': Q,
+            'delta_t_m': delta_t_m,
+            'delta_t_1': delta_t_2,
+            'm_h': m_h,
+            'c_p_h': c_p_h,
+            'c_p_solvent': c_p_solvent,
+            'c_p_solute': c_p_solute,
+            't_p': t_p,
+            't_in': t_in,
+            't_out': t_out,
+            'c_p_water': c_p_c,
+            't_water_avarage': t_water_avarage,
+            't_water_cooled': t_water_cooled
+        }
+
+    def get_condenser(self, R_multiple, K_condenser=300):
+        material = self.material
+        real_plates = self.get_real_plates(R_multiple)
+        t = real_plates['t_top']
+        p = self.p_atm
+        y = material.x_D
+        M_v = self.get_M_v(y)
+        V = self.get_V(R_multiple)
+        m_h = sci_round(M_v * V / 3600)
+        r_solute = get_latent_heat_t(self.solute_latent_heat, t)
+        r_solvent = get_latent_heat_t(self.solvent_latent_heat, t)
+        r = sci_round(y * r_solute + (1 - y) * r_solvent)
+        t_water_initial = self.t_water_initial
+        t_water_cooled = self.delta_t_water + t_water_initial
+        t_water_average = sci_round((t_water_initial + t_water_cooled) / 2)
+        c_p_c = get_c_p_by_t(self.solvent_c_p_t, t_water_average)
+        delta_t_1 = sci_round(t - t_water_cooled)
+        delta_t_2 = sci_round(t - t_water_initial)
+        Q = sci_round(m_h * r)
+        m_c = sci_round(Q / (c_p_c * self.delta_t_water))
+        delta_t_m = sci_round(
+            (delta_t_2 - delta_t_1) / np.log(delta_t_2 / delta_t_1))
+        A = sci_round(Q / (K_condenser * delta_t_m) * 1000)
+        C_F = sci_round(self.fee_C_F * A)
+        C_w = sci_round(self.fee_cool_water * m_c / 1000 * 3600 *
+                        material.time)
+        return {
+            'm_c': m_c,
+            'A': A,
+            'C_F': C_F,
+            'C_w': C_w,
+            'delta_t_m': delta_t_m,
+            'Q': Q,
+            'delta_t_1': delta_t_1,
+            'delta_t_2': delta_t_2,
+            'c_p_c': c_p_c,
+            't_water_average': t_water_average,
+            'r': r,
+            'r_solute': r_solute,
+            'r_solvent': r_solvent,
+            'm_h': m_h,
+            'V': V,
+            'M_v': M_v,
+            'y': y,
+            'p': p,
+            't': t
+        }
+
+    def get_reboiler(self, R_multiple, loss_Q=1.05, K_reboiler=300):
+        T_steam = self.t_steam
+        real_plates = self.get_real_plates(R_multiple)
+        t_out = t_in = real_plates['t_bottom']
+        material = self.material
+        V = sci_round(self.get_V(R_multiple) - (1 - self.q) * material.F)
+        thero_plates = self.get_thero_plates(R_multiple)
+        x = thero_plates['x'][-1]
+        M_v = sci_round(self.get_M_v(x))
+        m_c = sci_round(V * M_v / 3600)
+        r_solute = sci_round(get_latent_heat_t(self.solute_latent_heat, t_in))
+        r_solvent = sci_round(get_latent_heat_t(self.solvent_latent_heat, t_in))
+        M_solute = material.M_solute
+        M_solvent = material.M_solvent
+        r_c = sci_round(x * M_solute / M_v * r_solute +
+                        (1 - x) * M_solvent / M_v * r_solvent)
+        r_h = sci_round(get_latent_heat_t(self.steam_latent_heat, T_steam))
+        Q = sci_round(m_c * r_c)
+        m_h = sci_round(loss_Q * Q / r_h)
+        delta_t_m = sci_round(T_steam - t_out)
+        A = sci_round(loss_Q * Q / (K_reboiler * delta_t_m) * 1000)
+        C_F = sci_round(self.fee_C_F * A)
+        time = material.time
+        C_S = sci_round(self.fee_steam * m_h / 1000 * 3600 * time)
+        return {
+            'A': A,
+            'm_h': m_h,
+            'C_F': C_F,
+            'C_S': C_S,
+            'Q': Q,
+            'delta_t_m': delta_t_m,
+            'r_water': r_h,
+            'r_c': r_c,
+            'r_solute': r_solute,
+            'r_solvent': r_solvent,
+            'M_v': M_v,
+            'm_c': m_c,
+            'V': V
+        }
+
+    def get_whole_cost(self,
+                       R_multiple,
+                       u_multiple=0.6,
+                       H_T=0.35,
+                       h_L=0.05,
+                       K_heat=300,
+                       loss_Q=1.05,
+                       K_cool=300,
+                       K_condenser=300,
+                       K_reboiler=300):
+        tower = self.get_tower_diameter(R_multiple, u_multiple, H_T, h_L)
+        C_D = tower['C_D']
+        preheat = self.get_preheat(K_heat, loss_Q)
+        cooler = self.get_cooler(R_multiple, K_cool)
+        condenser = self.get_condenser(R_multiple, K_condenser)
+        reboiler = self.get_reboiler(R_multiple, loss_Q, K_reboiler)
+        C_F = preheat['C_F'] + cooler['C_F'] + condenser['C_F'] + reboiler[
+            'C_F']
+        C_S = preheat['C_S'] + reboiler['C_S']
+        C_w = cooler['C_w'] + condenser['C_w']
+        C = sci_round(
+            (0.33 * (C_D + C_F) + (C_S + C_w)) / 10000)  # Ten thousand yuan
+        return {
+            'C': C,
+            'C_D': C_D,
+            'C_F': C_F,
+            'C_S': C_S,
+            'C_w': C_w,
+        }
+
+    def get_cost_R(self,
+                   R_multiple=None,
+                   u_multiple=0.6,
+                   H_T=0.35,
+                   h_L=0.05,
+                   K_heat=300,
+                   loss_Q=1.05,
+                   K_cool=300,
+                   K_condenser=300,
+                   K_reboiler=300,
+                   R_multiple_min=1.001,
+                   R_multiple_max=1.4,
+                   num=200):
+        material = self.material
+        R_min = material.R_min
+        min = R_min * R_multiple_min
+        max = R_min * R_multiple_max
+        R = np.linspace(min, max,
+                        num).tolist() if not R_multiple else R_multiple
+        cost = []
+        with alive_bar(len(R)) as bar:
+            for i in R:
+                cost.append(
+                    self.get_whole_cost(i / R_min,
+                                        u_multiple=u_multiple,
+                                        H_T=H_T,
+                                        h_L=h_L,
+                                        K_heat=K_heat,
+                                        loss_Q=loss_Q,
+                                        K_cool=K_cool,
+                                        K_condenser=K_condenser,
+                                        K_reboiler=K_reboiler)['C'])
+                bar()
+
+        R_new, cost_new = one_D_matching(np.array(R), np.array(cost))
+
+        cost_min = cost_new.argmin()
+        R_min = R_new[cost_min]
+
+        return {'R': R, 'cost': cost, 'min': (R_min, cost_new[cost_min])}
+
+    def draw_cost_R(self,
+                    R_multiple=None,
+                    u_multiple=0.6,
+                    H_T=0.35,
+                    h_L=0.05,
+                    K_heat=300,
+                    loss_Q=1.05,
+                    K_cool=300,
+                    K_condenser=300,
+                    K_reboiler=300,
+                    R_multiple_min=1.001,
+                    R_multiple_max=1.4,
+                    num=200):
+        data = self.get_cost_R(R_multiple=R_multiple,
+                               u_multiple=u_multiple,
+                               H_T=H_T,
+                               h_L=h_L,
+                               K_heat=K_heat,
+                               loss_Q=loss_Q,
+                               K_cool=K_cool,
+                               K_condenser=K_condenser,
+                               K_reboiler=K_reboiler,
+                               R_multiple_min=R_multiple_min,
+                               R_multiple_max=R_multiple_max,
+                               num=num)
+
+        cost = np.array(data['cost'])
+        R = np.array(data['R'])
+        R_min, cost_min = data['min']
+
+        R_new, cost_new = one_D_matching(R, cost)
+
+        def draw_func():
+            plt.plot(R_new, cost_new, linestyle='-')
+            plt.plot(R, cost, 'o')
+            plt.plot(R_min, cost_min, 'o', color='red')
+            plt.text(R_min, cost_min, f'({R_min:.2f},{cost_min:.2f})')
+
+        draw(draw_func, '回流比总费用关系图')
